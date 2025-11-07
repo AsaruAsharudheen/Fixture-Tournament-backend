@@ -1,7 +1,7 @@
 // routes/tournamentRoutes.js
 const express = require('express');
 const router = express.Router();
-const Tournament = require('../models/TournamentModel');
+const Tournament = require('../Models/TournamentModel');
 const auth = require('../middleware/authMiddleware'); // Import protection middleware
 
 const MAIN_BRACKET_ID = 'main_bracket';
