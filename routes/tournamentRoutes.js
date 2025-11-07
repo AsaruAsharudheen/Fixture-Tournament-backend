@@ -1,40 +1,52 @@
-// routes/tournamentRoutes.js
 const express = require('express');
 const router = express.Router();
-const Tournament = require('../Models/TournamentModel');
-const auth = require('../middleware/authMiddleware'); // Import protection middleware
+const Tournament = require('../models/TournamentModel');
+const auth = require('../middleware/authMiddleware');
 
 const MAIN_BRACKET_ID = 'main_bracket';
 
-// @route   GET /api/tournament
-// @desc    Get current tournament data (PUBLIC ACCESS)
+// 📡 GET: Public — Fetch the tournament data
 router.get('/', async (req, res) => {
-    try {
-        const data = await Tournament.findOne({ id: MAIN_BRACKET_ID });
-        // Return data if found, or an empty structure if not yet set up
-        res.json(data || { teams: [], matches: [] }); 
-    } catch (err) {
-        res.status(500).send('Server Error');
-    }
+  try {
+    const data = await Tournament.findOne({ id: MAIN_BRACKET_ID });
+    res.json(data || { teams: [], matches: [] });
+  } catch (err) {
+    console.error('GET /api/tournament error:', err);
+    res.status(500).json({ message: 'Server Error' });
+  }
 });
 
-// @route   POST /api/tournament
-// @desc    Initialize or Update tournament data (ADMIN ONLY)
+// 🔐 POST: Admin — Update or create tournament safely
 router.post('/', auth, async (req, res) => {
-    try {
-        const { teams, matches } = req.body;
-        
-        // This handles both initial setup and score/bracket updates
-        const updatedData = await Tournament.findOneAndUpdate(
-            { id: MAIN_BRACKET_ID },
-            { $set: { teams, matches } },
-            { new: true, upsert: true } // 'upsert: true' means create if not exists
-        );
-        res.json(updatedData);
-    } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server Error');
+  try {
+    const { teams, matches } = req.body;
+
+    // Validate structure
+    if (teams && !Array.isArray(teams))
+      return res.status(400).json({ message: 'Invalid teams format' });
+    if (matches && !Array.isArray(matches))
+      return res.status(400).json({ message: 'Invalid matches format' });
+
+    // Fetch or initialize base document
+    let tournament = await Tournament.findOne({ id: MAIN_BRACKET_ID });
+
+    if (!tournament) {
+      tournament = new Tournament({
+        id: MAIN_BRACKET_ID,
+        teams: teams || [],
+        matches: matches || [],
+      });
+    } else {
+      if (teams) tournament.teams = teams;
+      if (matches) tournament.matches = matches;
     }
+
+    const saved = await tournament.save();
+    res.json(saved);
+  } catch (err) {
+    console.error('POST /api/tournament error:', err);
+    res.status(500).json({ message: 'Server Error' });
+  }
 });
 
 module.exports = router;
