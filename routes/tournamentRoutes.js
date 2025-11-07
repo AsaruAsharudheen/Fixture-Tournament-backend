@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const Tournament = require('../models/TournamentModel');
+const Tournament = require('../Models/TournamentModel');
 const auth = require('../middleware/authMiddleware');
 
 const MAIN_BRACKET_ID = 'main_bracket';
