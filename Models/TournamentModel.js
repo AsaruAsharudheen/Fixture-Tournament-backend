@@ -1,35 +1,42 @@
-// models/TournamentModel.js
 const mongoose = require('mongoose');
 
-const TeamSchema = new mongoose.Schema({
-  id: { type: String, required: true },       // e.g. 't1'
-  name: { type: String, required: true },     // e.g. 'KACHORKAR'
-  group: { type: String, enum: ['A', 'B'], required: true },
-  points: { type: Number, default: 0 },
-  goals_for: { type: Number, default: 0 },
-  goals_against: { type: Number, default: 0 },
-  goal_diff: { type: Number, default: 0 },
-});
-
 const MatchSchema = new mongoose.Schema({
-  id: { type: String, required: true }, // unique id for match
-  group: { type: String, enum: ['A', 'B', 'SEMIS', 'FINAL'], default: null },
-  round: { type: String, default: null },
+  id: String,
+  group: String,
+  round: String,
   match_num: Number,
+
   teamA_id: String,
   teamB_id: String,
+
   scoreA: { type: Number, default: null },
   scoreB: { type: Number, default: null },
+
+  penaltyA: { type: Number, default: null },
+  penaltyB: { type: Number, default: null },
+
+  tossWinner: { type: Boolean, default: false },
+
   winner_id: { type: String, default: null },
+});
+
+const TeamSchema = new mongoose.Schema({
+  id: String,
+  name: String,
+  group: String,
+  points: Number,
+  goals_for: Number,
+  goals_against: Number,
+  goal_diff: Number,
 });
 
 const TournamentSchema = new mongoose.Schema({
   id: { type: String, default: 'main_bracket', unique: true },
   groups: {
-    A: { type: [TeamSchema], default: [] },
-    B: { type: [TeamSchema], default: [] },
+    A: [TeamSchema],
+    B: [TeamSchema],
   },
-  matches: { type: [MatchSchema], default: [] }, // includes group stage + knockouts (tagged by group)
+  matches: [MatchSchema],
 });
 
 module.exports = mongoose.model('Tournament', TournamentSchema);
