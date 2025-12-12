@@ -6,9 +6,9 @@ const crypto = require("crypto");
 
 const uuid = () => crypto.randomUUID();
 
-// ---------------------------------------------------------
+// -------------------------------------------
 // RESET TEAM STATS
-// ---------------------------------------------------------
+// -------------------------------------------
 function resetTeamStats(tournament) {
   ["A", "B"].forEach((g) => {
     tournament.groups[g].forEach((t) => {
@@ -63,9 +63,9 @@ function sortTeams(teams) {
   });
 }
 
-// ---------------------------------------------------------
+// -------------------------------------------
 // GET TOURNAMENT
-// ---------------------------------------------------------
+// -------------------------------------------
 router.get("/", async (req, res) => {
   let tournament = await Tournament.findOne({ id: "main_bracket" });
   if (!tournament)
@@ -74,20 +74,19 @@ router.get("/", async (req, res) => {
   res.json(tournament);
 });
 
-// ---------------------------------------------------------
-// GENERATE GROUPS + ALTERNATING MATCHES
-// ---------------------------------------------------------
+// -------------------------------------------
+// GENERATE GROUPS (6 TEAMS → 3 & 3)
+// -------------------------------------------
 router.post("/generate", auth, async (req, res) => {
   const teams = req.body.teams;
-  if (!Array.isArray(teams) || teams.length !== 8)
-    return res.status(400).json({ message: "Need 8 teams" });
+  if (!Array.isArray(teams) || teams.length !== 6)
+    return res.status(400).json({ message: "Need EXACTLY 6 teams" });
 
   let tournament = await Tournament.findOne({ id: "main_bracket" });
-  if (!tournament)
-    tournament = new Tournament({ id: "main_bracket" });
+  if (!tournament) tournament = new Tournament({ id: "main_bracket" });
 
-  // SPLIT GROUPS
-  tournament.groups.A = teams.slice(0, 4).map((t) => ({
+  // SPLIT GROUP A – 3 teams
+  tournament.groups.A = teams.slice(0, 3).map((t) => ({
     id: t.id || uuid(),
     name: t.name,
     group: "A",
@@ -97,7 +96,8 @@ router.post("/generate", auth, async (req, res) => {
     goal_diff: 0,
   }));
 
-  tournament.groups.B = teams.slice(4, 8).map((t) => ({
+  // SPLIT GROUP B – 3 teams
+  tournament.groups.B = teams.slice(3, 6).map((t) => ({
     id: t.id || uuid(),
     name: t.name,
     group: "B",
@@ -107,43 +107,35 @@ router.post("/generate", auth, async (req, res) => {
     goal_diff: 0,
   }));
 
-  // CORRECT ROUND ROBIN ORDER
-  const RR_ORDER = [
-    [0, 1], [2, 3],
-    [0, 2], [1, 3],
-    [0, 3], [1, 2],
+  // Round robin for 3 teams = 3 matches
+  const RR_3 = [
+    [0, 1],
+    [1, 2],
+    [0, 2],
   ];
 
-  const makeGroupMatches = (group, label) => {
-    let out = [];
-    let num = 1;
-
-    RR_ORDER.forEach(([i, j]) => {
-      out.push({
-        id: uuid(),
-        group: label,
-        round: "GROUP",
-        match_num: num++,
-        teamA_id: group[i].id,
-        teamB_id: group[j].id,
-        scoreA: null,
-        scoreB: null,
-        penaltyA: null,
-        penaltyB: null,
-        tossWinner: false,
-        winner_id: null,
-      });
-    });
-
-    return out;
-  };
+  const makeGroupMatches = (group, label) =>
+    RR_3.map(([a, b], index) => ({
+      id: uuid(),
+      group: label,
+      round: "GROUP",
+      match_num: index + 1,
+      teamA_id: group[a].id,
+      teamB_id: group[b].id,
+      scoreA: null,
+      scoreB: null,
+      penaltyA: null,
+      penaltyB: null,
+      tossWinner: false,
+      winner_id: null,
+    }));
 
   const A_matches = makeGroupMatches(tournament.groups.A, "A");
   const B_matches = makeGroupMatches(tournament.groups.B, "B");
 
-  // ALTERNATING: A1,B1,A2,B2...
+  // Alternate matches: A1, B1, A2, B2, A3, B3
   const finalMatches = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 3; i++) {
     finalMatches.push(A_matches[i]);
     finalMatches.push(B_matches[i]);
   }
@@ -151,13 +143,12 @@ router.post("/generate", auth, async (req, res) => {
   tournament.matches = finalMatches;
 
   await tournament.save();
-
-  res.json({ message: "Groups + Matches generated", tournament });
+  res.json({ message: "6-Team Tournament Generated", tournament });
 });
 
-// ---------------------------------------------------------
-// UPDATE MATCH (GROUP + KNOCKOUT LOGIC)
-// ---------------------------------------------------------
+// -------------------------------------------
+// UPDATE MATCH (GROUP + KNOCKOUT)
+// -------------------------------------------
 router.post("/update-match", auth, async (req, res) => {
   const { matchId, scoreA, scoreB, penaltyA, penaltyB } = req.body;
 
@@ -170,30 +161,26 @@ router.post("/update-match", auth, async (req, res) => {
   const isKnockout = match.group === "SEMIS" || match.group === "FINAL";
 
   if (isKnockout) {
-    // DRAW in normal time → penalties
     if (scoreA === scoreB) {
       match.penaltyA = penaltyA ?? null;
       match.penaltyB = penaltyB ?? null;
 
       if (match.penaltyA == null || match.penaltyB == null) {
         return res.json({
-          message: "Normal time draw → Enter penalty scores",
+          message: "Enter penalty scores",
           requirePenalties: true,
           match,
         });
       }
 
-      // Penalties also level → toss
       if (match.penaltyA === match.penaltyB) {
-        const tossWinner = Math.random() < 0.5 ? match.teamA_id : match.teamB_id;
-        match.winner_id = tossWinner;
+        match.winner_id = Math.random() < 0.5 ? match.teamA_id : match.teamB_id;
         match.tossWinner = true;
       } else {
         match.winner_id =
           match.penaltyA > match.penaltyB ? match.teamA_id : match.teamB_id;
       }
     } else {
-      // Normal time winner
       match.winner_id = scoreA > scoreB ? match.teamA_id : match.teamB_id;
     }
 
@@ -201,30 +188,31 @@ router.post("/update-match", auth, async (req, res) => {
     return res.json({ message: "Knockout match updated", match });
   }
 
-  // GROUP LOGIC
+  // GROUP MATCH → Recompute
   recomputeStandings(t);
   await t.save();
+
   res.json({ message: "Group match updated", tournament: t });
 });
 
-// ---------------------------------------------------------
-// SEMIFINALS
-// ---------------------------------------------------------
+// -------------------------------------------
+// SEMIFINALS (TOP 2 FROM EACH GROUP)
+// -------------------------------------------
 router.post("/generate-semifinals", auth, async (req, res) => {
   const t = await Tournament.findOne({ id: "main_bracket" });
 
   recomputeStandings(t);
 
-  const A = sortTeams([...t.groups.A]);
-  const B = sortTeams([...t.groups.B]);
+  const A = sortTeams([...t.groups.A]); // A1, A2, A3
+  const B = sortTeams([...t.groups.B]); // B1, B2, B3
 
   const semi1 = {
     id: uuid(),
     group: "SEMIS",
     round: "SEMI",
     match_num: 1,
-    teamA_id: A[0].id,
-    teamB_id: B[1].id,
+    teamA_id: A[0].id, // A1
+    teamB_id: B[1].id, // B2
     scoreA: null,
     scoreB: null,
     penaltyA: null,
@@ -238,8 +226,8 @@ router.post("/generate-semifinals", auth, async (req, res) => {
     group: "SEMIS",
     round: "SEMI",
     match_num: 2,
-    teamA_id: B[0].id,
-    teamB_id: A[1].id,
+    teamA_id: B[0].id, // B1
+    teamB_id: A[1].id, // A2
     scoreA: null,
     scoreB: null,
     penaltyA: null,
@@ -252,12 +240,12 @@ router.post("/generate-semifinals", auth, async (req, res) => {
   t.matches.push(semi1, semi2);
 
   await t.save();
-  res.json({ message: "Semifinals created", semifinals: [semi1, semi2] });
+  res.json({ message: "Semifinals created", semis: [semi1, semi2] });
 });
 
-// ---------------------------------------------------------
-// FINAL
-// ---------------------------------------------------------
+// -------------------------------------------
+// FINAL (WINNERS OF SEMIS)
+// -------------------------------------------
 router.post("/generate-final", auth, async (req, res) => {
   const t = await Tournament.findOne({ id: "main_bracket" });
 

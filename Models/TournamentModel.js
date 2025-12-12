@@ -16,7 +16,6 @@ const MatchSchema = new mongoose.Schema({
   penaltyB: { type: Number, default: null },
 
   tossWinner: { type: Boolean, default: false },
-
   winner_id: { type: String, default: null },
 });
 
